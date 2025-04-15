@@ -780,7 +780,7 @@ async function listArchiveIsos() {
   // Print archive contents
   console.log(`\nISOs in archive (${archivePath}):\n`);
   files.forEach(f => {
-    const meta = archiveIsos.find(i => i.name === f || i.filename === f);
+    const meta = archiveIsos.find(i => i.filename === f || i.name === f);
     const size = fs.statSync(path.join(archivePath, f)).size;
     console.log(`- ${f} (${(size/1024/1024).toFixed(1)} MB)${meta ? ' | ' + (meta.name || meta.filename) : ''}`);
   });
@@ -821,9 +821,7 @@ async function deleteArchiveIso(filename) {
       try {
         meta = JSON.parse(fs.readFileSync(isosJsonPath, 'utf8'));
         if (!Array.isArray(meta.isos)) meta.isos = [];
-      } catch (e) {
-        meta = { isos: [] };
-      }
+      } catch (e) {}
       // Remove any entry matching this filename or name
       meta.isos = meta.isos.filter(i => i.filename !== filename && i.name !== filename);
       fs.writeFileSync(isosJsonPath, JSON.stringify(meta, null, 2));
@@ -863,16 +861,45 @@ async function verifyArchiveIso(filename) {
     console.error('No hash found for', filename, 'in isos.json');
     process.exit(1);
   }
-  const hashAlgorithm = config.hashAlgorithm || 'sha256';
-  const fileHash = await new Promise((resolve, reject) => {
-    const hash = require('crypto').createHash(hashAlgorithm);
-    const stream = fs.createReadStream(filePath);
-    stream.on('data', chunk => hash.update(chunk));
-    stream.on('end', () => resolve(hash.digest('hex')));
-    stream.on('error', reject);
-  });
+  const hashAlgorithm = isoEntry.hashAlgorithm || config.hashAlgorithm || 'sha256';
+  let fileHash;
+  if (fs.statSync(filePath).size > 16 * 1024 * 1024) { // Use progress bar for files >16MB
+    const bar = new cliProgress.SingleBar({
+      format: 'Hashing |{bar}| {percentage}% | {value}/{total} bytes',
+      hideCursor: true
+    }, cliProgress.Presets.shades_classic);
+    const total = fs.statSync(filePath).size;
+    bar.start(total, 0);
+    fileHash = await new Promise((resolve, reject) => {
+      const hash = require('crypto').createHash(hashAlgorithm);
+      const stream = fs.createReadStream(filePath);
+      let processed = 0;
+      stream.on('data', chunk => {
+        hash.update(chunk);
+        processed += chunk.length;
+        bar.update(processed);
+      });
+      stream.on('end', () => {
+        bar.update(total);
+        bar.stop();
+        resolve(hash.digest('hex'));
+      });
+      stream.on('error', err => {
+        bar.stop();
+        reject(err);
+      });
+    });
+  } else {
+    fileHash = await new Promise((resolve, reject) => {
+      const hash = require('crypto').createHash(hashAlgorithm);
+      const stream = fs.createReadStream(filePath);
+      stream.on('data', chunk => hash.update(chunk));
+      stream.on('end', () => resolve(hash.digest('hex')));
+      stream.on('error', reject);
+    });
+  }
   if (fileHash.toLowerCase() === isoEntry.hash.toLowerCase()) {
-    console.log('Hash verified successfully for', filename);
+    console.log('Local hash matches online hash for', filename);
     process.exit(0);
   } else {
     console.error('Hash mismatch for', filename);
@@ -981,7 +1008,6 @@ async function downloadIso(isos, options) {
     });
     // If download succeeded, update isos.json
     if (result.success) {
-      console.log("DEBUG: selectedIso.version =", selectedIso.version);
       // Copy all relevant metadata from selectedIso for isos.json
       const meta = {
         name: selectedIso.name,
@@ -994,6 +1020,12 @@ async function downloadIso(isos, options) {
         url: selectedIso.link
       };
       updateIsosJson(meta, downloadDir);
+      // Print download speed summary if available
+      if (result.size && result.duration) {
+        const mb = result.size / 1024 / 1024;
+        const speed = (mb / (result.duration || 1)).toFixed(2);
+        console.log(`Downloaded ${(mb).toFixed(2)} MB in ${result.duration.toFixed(1)}s (${speed} MB/s)`);
+      }
     }
     // Test mode - delete file after verification
     if (options.testMode && result.success) {
@@ -1095,55 +1127,105 @@ async function main() {
       }
       
       case 'verify': {
-        let isos = [];
-        
-        if (args.targetUrl) {
-          console.log(`Fetching ISO list from ${args.targetUrl}...`);
-          const rawData = await fetchData(args.targetUrl);
-          // Save raw links.json to project root
-          try {
-            const rootLinksPath = path.join(__dirname, 'links.json');
-            fs.writeFileSync(rootLinksPath, rawData, 'utf8');
-            console.log('Saved RAW links.json to project root.');
-          } catch (err) {
-            console.error('Failed to write RAW links.json to project root:', err);
-          }
-          isos = await fetchIsoList(args.targetUrl);
-        } else if (args.savePath && fs.existsSync(args.savePath)) {
-          console.log(`Loading ISO list from ${args.savePath}...`);
-          const fileContent = fs.readFileSync(args.savePath, 'utf8');
-          isos = JSON.parse(fileContent);
+        // Interactive verify for local ISOs
+        const config = getConfig();
+        const archivePath = path.resolve(config.isoArchive || 'ISO-Archive');
+        const isosJsonPath = path.join(archivePath, 'isos.json');
+        if (!fs.existsSync(isosJsonPath)) {
+          console.error('No isos.json found in archive.');
+          process.exit(1);
+        }
+        const meta = JSON.parse(fs.readFileSync(isosJsonPath, 'utf8'));
+        const isos = Array.isArray(meta.isos) ? meta.isos : [];
+        if (isos.length === 0) {
+          console.error('No ISOs found in archive.');
+          process.exit(1);
+        }
+        // Interactive selection
+        const selected = await selectIso(isos.map(i => ({
+          ...i,
+          link: i.url || '', // for selectIso compatibility
+          size: i.size
+        })), { purpose: 'verify' });
+        const filePath = path.join(archivePath, selected.filename);
+        if (!fs.existsSync(filePath)) {
+          console.error('File not found:', filePath);
+          process.exit(1);
+        }
+        // 1. Verify local hash (with cli-progress if possible)
+        const hashAlgorithm = selected.hashAlgorithm || config.hashAlgorithm || 'sha256';
+        let fileHash;
+        if (fs.statSync(filePath).size > 16 * 1024 * 1024) { // Use progress bar for files >16MB
+          const bar = new cliProgress.SingleBar({
+            format: 'Hashing |{bar}| {percentage}% | {value}/{total} bytes',
+            hideCursor: true
+          }, cliProgress.Presets.shades_classic);
+          const total = fs.statSync(filePath).size;
+          bar.start(total, 0);
+          fileHash = await new Promise((resolve, reject) => {
+            const hash = require('crypto').createHash(hashAlgorithm);
+            const stream = fs.createReadStream(filePath);
+            let processed = 0;
+            stream.on('data', chunk => {
+              hash.update(chunk);
+              processed += chunk.length;
+              bar.update(processed);
+            });
+            stream.on('end', () => {
+              bar.update(total);
+              bar.stop();
+              resolve(hash.digest('hex'));
+            });
+            stream.on('error', err => {
+              bar.stop();
+              reject(err);
+            });
+          });
         } else {
-          console.log(`Fetching ISO list from default URL: ${config.defaultIsoListUrl}...`);
-          const rawData = await fetchData(config.defaultIsoListUrl);
-          // Save raw links.json to project root
-          try {
-            const rootLinksPath = path.join(__dirname, 'links.json');
-            fs.writeFileSync(rootLinksPath, rawData, 'utf8');
-            console.log('Saved RAW links.json to project root.');
-          } catch (err) {
-            console.error('Failed to write RAW links.json to project root:', err);
+          fileHash = await new Promise((resolve, reject) => {
+            const hash = require('crypto').createHash(hashAlgorithm);
+            const stream = fs.createReadStream(filePath);
+            stream.on('data', chunk => hash.update(chunk));
+            stream.on('end', () => resolve(hash.digest('hex')));
+            stream.on('error', reject);
+          });
+        }
+        // 2. Compare isos.json hash with GitHub links.json if version matches
+        const linksUrl = config.defaultIsoListUrl || 'https://raw.githubusercontent.com/mikl0s/iso-list/main/links.json';
+        let githubIso = null;
+        try {
+          const linksRaw = await fetchData(linksUrl);
+          const linksJson = JSON.parse(linksRaw);
+          for (const [key, value] of Object.entries(linksJson)) {
+            if (
+              (key === selected.name && value.version === selected.version) ||
+              (value.filename === selected.filename && value.version === selected.version)
+            ) {
+              githubIso = value;
+              break;
+            }
           }
-          isos = await fetchIsoList(config.defaultIsoListUrl);
+        } catch (e) {
+          console.error('Failed to fetch or parse links.json from GitHub:', e.message);
         }
-        
-        console.log('Verifying ISO hashes...');
-        let updatedIsos = [];
-        
-        for (const iso of isos) {
-          const result = await verifyIsoHash(iso);
-          updatedIsos.push(result);
-        }
-        
-        // Save verified results
-        if (args.savePath) {
-          fs.writeFileSync(args.savePath, JSON.stringify(updatedIsos, null, 2));
-          console.log(`Verified hash information saved to ${args.savePath}`);
+        if (githubIso) {
+          if (githubIso.hash_value && githubIso.hash_type && githubIso.version === selected.version) {
+            if (
+              githubIso.hash_value.toLowerCase() === selected.hash.toLowerCase() &&
+              githubIso.hash_type.toLowerCase() === (selected.hashAlgorithm || '').toLowerCase()
+            ) {
+              console.log('Local hash matches online hash for', selected.filename);
+            } else {
+              console.error('Hash mismatch between isos.json and GitHub links.json for', selected.filename);
+              console.error('  isos.json:', selected.hash, selected.hashAlgorithm);
+              console.error('  links.json:', githubIso.hash_value, githubIso.hash_type);
+            }
+          } else {
+            console.log('Version differs or missing hash in links.json; skipping comparison.');
+          }
         } else {
-          console.log('Verified ISO information:');
-          console.log(JSON.stringify(updatedIsos, null, 2));
+          console.log('No matching ISO/version found in links.json on GitHub; skipping comparison.');
         }
-        
         break;
       }
       
@@ -1265,7 +1347,7 @@ if (require.main === module) {
           
           // Parse the URL to get the filename
           const { filename } = parseUrl(url);
-          const downloadPath = path.join(outputPath, filename);
+          const downloadPath = path.join(outputPath || DEFAULT_CONFIG.downloadDir, filename);
           
           const startTime = Date.now(); // Track start time for duration calculation
           
@@ -1454,7 +1536,8 @@ class IsoManager {
       });
       
       // Use https for HTTPS URLs, http otherwise
-      const request = httpModule.get(finalUrl, (response) => {
+      const client = url.startsWith('https') ? https : http;
+      const req = client.get(finalUrl, (response) => {
         // Handle redirects
         if (response.statusCode === 301 || response.statusCode === 302) {
           const redirectUrl = new URL(response.headers.location, finalUrl).toString();
@@ -1473,33 +1556,58 @@ class IsoManager {
         const totalBytes = parseInt(response.headers['content-length'], 10) || 0;
         let bytesTransferred = 0;
         
-        // Pipe data with progress tracking
+        // Setup progress bar with speed and ETA
+        const bar = new cliProgress.SingleBar({
+          format: 'Downloading [{bar}] {percentage}% | {downloaded}/{total} | {speed}/s | ETA: {eta}',
+          barCompleteChar: '\u2588',
+          barIncompleteChar: '\u2591',
+          hideCursor: true,
+        }, cliProgress.Presets.rect);
+        bar.start(totalBytes, 0, {
+          speed: '0.00 MB',
+          eta: 'Unknown',
+          downloaded: '0',
+          total: totalBytes ? formatSize(totalBytes) : 'Unknown'
+        });
+        let lastTime = Date.now();
+        let lastBytes = 0;
+        let speedHistory = [];
         response.on('data', (chunk) => {
           bytesTransferred += chunk.length;
-          if (onProgress) {
-            onProgress({
-              percentage: totalBytes > 0 ? (bytesTransferred / totalBytes) * 100 : 0,
-              bytesTransferred,
-              totalBytes,
-              filename: filename
-            });
+          const now = Date.now();
+          const elapsed = (now - lastTime) / 1000;
+          let speed = 0;
+          if (elapsed > 0.5) {
+            speed = (bytesTransferred - lastBytes) / 1024 / 1024 / elapsed;
+            lastTime = now;
+            lastBytes = bytesTransferred;
+            speedHistory.push(speed);
+            if (speedHistory.length > 5) speedHistory.shift(); // keep last 5
           }
+          // Use moving average for smoother speed
+          const avgSpeed = speedHistory.length ? speedHistory.reduce((a,b)=>a+b,0)/speedHistory.length : 0;
+          const eta = (totalBytes && avgSpeed > 0) ? formatTime((totalBytes - bytesTransferred) / avgSpeed) : 'Unknown';
+          bar.update(bytesTransferred, {
+            speed: (avgSpeed / 1024 / 1024).toFixed(2) + ' MB',
+            eta: eta,
+            downloaded: formatSize(bytesTransferred),
+            total: totalBytes ? formatSize(totalBytes) : 'Unknown'
+          });
         });
-        
         response.pipe(fileStream);
 
         // Store bytesTransferred in a variable that can be accessed in the finish event
         fileStream.bytesTransferred = bytesTransferred;
       });
       
-      request.on('error', (err) => {
+      req.on('error', (err) => {
         fileStream.destroy();
         reject(err);
       });
       
-      fileStream.on('finish', function() {
-        logToFile(`Download completed: ${downloadPath}`);
-        logToFile(`Bytes transferred: ${this.bytesTransferred || 0}`);
+      fileStream.on('finish', () => {
+        bar.update(totalBytes);
+        bar.stop();
         resolve({
           success: true,
           filePath: downloadPath,
@@ -1511,50 +1619,83 @@ class IsoManager {
   }
   
   async downloadIso(params) {
-    const { url, verify, hashAlgorithm, signal, onProgress, downloadDir: paramDownloadDir } = params;
-    const config = getConfig();
-    // Always prefer paramDownloadDir, then config.downloadDir, then config.isoArchive, then 'ISO-Archive' as the default download directory
-    const downloadDir = paramDownloadDir || config.downloadDir || config.isoArchive || 'ISO-Archive';
-    if (!fs.existsSync(downloadDir)) {
-      fs.mkdirSync(downloadDir, { recursive: true });
-    }
+    const { url, outputPath, verify = false, hashAlgorithm = 'sha256', onProgress, signal } = params;
     const { filename } = parseUrl(url);
-    if (!filename) throw new Error('Could not determine filename from URL');
-    const downloadPath = path.join(downloadDir, filename);
-    if (fs.existsSync(downloadPath)) {
-      const rl = createReadlineInterface();
-      const answer = await askQuestion(`\nFile already exists: ${downloadPath}\nOverwrite? (y/n): `, rl);
-      rl.close();
-      if (answer.toLowerCase() !== 'y') {
-        logToFile('Download cancelled.');
-        return { success: false, cancelled: true };
+    const downloadPath = path.join(outputPath || DEFAULT_CONFIG.downloadDir, filename);
+    const httpModule = url.startsWith('https') ? https : http;
+
+    // Get final URL after redirects
+    let finalUrl = url;
+    let redirects = 0;
+    while (redirects < 5) {
+      const res = await new Promise((resolve, reject) => {
+        const req = httpModule.request(finalUrl, { method: 'HEAD' }, resolve);
+        req.on('error', reject);
+        req.end();
+      });
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        finalUrl = new URL(res.headers.location, finalUrl).toString();
+        redirects++;
+      } else {
+        break;
       }
     }
-    // Download and verify file
-    const result = await this.downloadAndVerifyFile({
-      url,
-      outputPath: downloadDir,
-      verify,
-      hashAlgorithm,
-      onProgress,
-      signal
+    logToFile(`Final URL after redirects: ${finalUrl}`);
+    logToFile('Starting download...');
+    
+    // Start download
+    return new Promise((resolve, reject) => {
+      const req = httpModule.get(finalUrl, (response) => {
+        if (response.statusCode !== 200) {
+          return reject(new Error(`HTTP ${response.statusCode}`));
+        }
+        const totalBytes = parseInt(response.headers['content-length'], 10) || 0;
+        let bytesTransferred = 0;
+        const fileStream = fs.createWriteStream(downloadPath);
+        // Setup progress bar
+        const bar = new cliProgress.SingleBar({ format: 'Downloading [{bar}] {percentage}% | ETA: {eta}s' }, cliProgress.Presets.rect);
+        bar.start(totalBytes, 0, { speed: '0.00' });
+        let lastTime = Date.now();
+        let lastBytes = 0;
+        let speedHistory = [];
+        response.on('data', (chunk) => {
+          bytesTransferred += chunk.length;
+          const now = Date.now();
+          const elapsed = (now - lastTime) / 1000;
+          let speed = 0;
+          if (elapsed > 0.5) {
+            speed = (bytesTransferred - lastBytes) / 1024 / 1024 / elapsed;
+            lastTime = now;
+            lastBytes = bytesTransferred;
+            speedHistory.push(speed);
+            if (speedHistory.length > 5) speedHistory.shift(); // keep last 5
+          }
+          // Use moving average for smoother speed
+          const avgSpeed = speedHistory.length ? speedHistory.reduce((a,b)=>a+b,0)/speedHistory.length : 0;
+          const eta = (totalBytes && avgSpeed > 0) ? formatTime((totalBytes - bytesTransferred) / avgSpeed) : 'Unknown';
+          bar.update(bytesTransferred, { speed: avgSpeed.toFixed(2) });
+        });
+        response.pipe(fileStream);
+        fileStream.on('finish', () => {
+          bar.update(totalBytes);
+          bar.stop();
+          resolve({
+            success: true,
+            filePath: downloadPath,
+            filename,
+            size: bytesTransferred
+          });
+        });
+        req.on('error', (err) => {
+          bar.stop();
+          reject(err);
+        });
+      });
+      req.setTimeout(10 * 60 * 1000, () => {
+        req.abort();
+        reject(new Error('Request timed out while downloading'));
+      });
     });
-    // If download succeeded, update isos.json
-    if (result.success) {
-      // Copy all relevant metadata from parameters and result, not selectedIso
-      const meta = {
-        name: filename.replace(/\.iso$/i, ''),
-        filename,
-        hash: result.hash || '',
-        hashAlgorithm: hashAlgorithm || '',
-        size: result.size || (fs.existsSync(downloadPath) ? fs.statSync(downloadPath).size : 0),
-        addedDate: new Date().toISOString(),
-        version: (params.version !== undefined ? params.version : ""),
-        url: url
-      };
-      updateIsosJson(meta, downloadDir);
-    }
-    return result;
   }
   
   /**
@@ -1657,9 +1798,7 @@ async function deleteArchiveIso(filename) {
       try {
         meta = JSON.parse(fs.readFileSync(isosJsonPath, 'utf8'));
         if (!Array.isArray(meta.isos)) meta.isos = [];
-      } catch (e) {
-        meta = { isos: [] };
-      }
+      } catch (e) {}
       // Remove any entry matching this filename or name
       meta.isos = meta.isos.filter(i => i.filename !== filename && i.name !== filename);
       fs.writeFileSync(isosJsonPath, JSON.stringify(meta, null, 2));
@@ -1696,53 +1835,51 @@ async function verifyArchiveIso(filename) {
     console.error('No hash found for', filename, 'in isos.json');
     process.exit(1);
   }
-  const hashAlgorithm = config.hashAlgorithm || 'sha256';
-  const fileHash = await new Promise((resolve, reject) => {
-    const hash = require('crypto').createHash(hashAlgorithm);
-    const stream = fs.createReadStream(filePath);
-    stream.on('data', chunk => hash.update(chunk));
-    stream.on('end', () => resolve(hash.digest('hex')));
-    stream.on('error', reject);
-  });
+  const hashAlgorithm = isoEntry.hashAlgorithm || config.hashAlgorithm || 'sha256';
+  let fileHash;
+  if (fs.statSync(filePath).size > 16 * 1024 * 1024) { // Use progress bar for files >16MB
+    const bar = new cliProgress.SingleBar({
+      format: 'Hashing |{bar}| {percentage}% | {value}/{total} bytes',
+      hideCursor: true
+    }, cliProgress.Presets.shades_classic);
+    const total = fs.statSync(filePath).size;
+    bar.start(total, 0);
+    fileHash = await new Promise((resolve, reject) => {
+      const hash = require('crypto').createHash(hashAlgorithm);
+      const stream = fs.createReadStream(filePath);
+      let processed = 0;
+      stream.on('data', chunk => {
+        hash.update(chunk);
+        processed += chunk.length;
+        bar.update(processed);
+      });
+      stream.on('end', () => {
+        bar.update(total);
+        bar.stop();
+        resolve(hash.digest('hex'));
+      });
+      stream.on('error', err => {
+        bar.stop();
+        reject(err);
+      });
+    });
+  } else {
+    fileHash = await new Promise((resolve, reject) => {
+      const hash = require('crypto').createHash(hashAlgorithm);
+      const stream = fs.createReadStream(filePath);
+      stream.on('data', chunk => hash.update(chunk));
+      stream.on('end', () => resolve(hash.digest('hex')));
+      stream.on('error', reject);
+    });
+  }
   if (fileHash.toLowerCase() === isoEntry.hash.toLowerCase()) {
-    console.log('Hash verified successfully for', filename);
+    console.log('Local hash matches online hash for', filename);
     process.exit(0);
   } else {
     console.error('Hash mismatch for', filename);
     console.error('  Expected:', isoEntry.hash);
     console.error('  Actual:  ', fileHash);
     process.exit(2);
-  }
-}
-
-// --- PATCH: Use watcher event filter in setupArchiveWatcher ---
-function setupArchiveWatcher() {
-  const config = getConfig();
-  const archivePath = path.resolve(config.isoArchive || 'ISO-Archive');
-  try {
-    // Only log watcher setup errors
-    if (!fs.existsSync(archivePath)) {
-      try {
-        fs.mkdirSync(archivePath, { recursive: true });
-      } catch (err) {
-        logToFile(`Archive directory creation error: ${err.message}`);
-      }
-    }
-    const watcher = fs.watch(archivePath, (eventType, filename) => {
-      // Only log if something looks truly exceptional
-      if (!filename) {
-        logToFile(`Archive watcher event with missing filename: ${eventType}`);
-      }
-      // Optionally: log only unexpected event types
-      if (eventType !== 'rename' && eventType !== 'change') {
-        logToFile(`Archive watcher unexpected event: ${eventType} - ${filename}`);
-      }
-    });
-    watcher.on('error', (err) => {
-      logToFile('Archive watcher error:', err);
-    });
-  } catch (error) {
-    logToFile('Error setting up archive watcher:', error);
   }
 }
 
@@ -1762,9 +1899,7 @@ function updateIsosJson(meta, archiveDir = 'ISO-Archive', remove = false) {
     try {
       const parsed = JSON.parse(fs.readFileSync(isosJsonPath, 'utf8'));
       isos = parsed.isos || [];
-    } catch (e) {
-      isos = [];
-    }
+    } catch (e) {}
     // Remove any existing entry for this filename
     isos = isos.filter(i => i.filename !== meta.filename);
     if (!remove) {
@@ -1830,10 +1965,11 @@ IsoManager.prototype.downloadAndVerifyFile = async function(params) {
       let bytesTransferred = 0;
       const fileStream = fs.createWriteStream(downloadPath);
       // Setup progress bar
-      const bar = new cliProgress.SingleBar({ format: 'Downloading [{bar}] {percentage}% | ETA: {eta}s' }, cliProgress.Presets.shades_classic);
+      const bar = new cliProgress.SingleBar({ format: 'Downloading [{bar}] {percentage}% | ETA: {eta}s' }, cliProgress.Presets.rect);
       bar.start(totalBytes, 0, { speed: '0.00' });
       let lastTime = Date.now();
       let lastBytes = 0;
+      let speedHistory = [];
       response.on('data', (chunk) => {
         bytesTransferred += chunk.length;
         const now = Date.now();
@@ -1843,8 +1979,13 @@ IsoManager.prototype.downloadAndVerifyFile = async function(params) {
           speed = (bytesTransferred - lastBytes) / 1024 / 1024 / elapsed;
           lastTime = now;
           lastBytes = bytesTransferred;
+          speedHistory.push(speed);
+          if (speedHistory.length > 5) speedHistory.shift(); // keep last 5
         }
-        bar.update(bytesTransferred, { speed: speed.toFixed(2) });
+        // Use moving average for smoother speed
+        const avgSpeed = speedHistory.length ? speedHistory.reduce((a,b)=>a+b,0)/speedHistory.length : 0;
+        const eta = (totalBytes && avgSpeed > 0) ? formatTime((totalBytes - bytesTransferred) / avgSpeed) : 'Unknown';
+        bar.update(bytesTransferred, { speed: avgSpeed.toFixed(2) });
       });
       response.pipe(fileStream);
       fileStream.on('finish', () => {
@@ -1897,35 +2038,39 @@ function askQuestion(question, rl) {
 /**
  * Display a list of ISOs and let the user select one
  * @param {Array<Object>} isos - List of ISO objects
+ * @param {Object} options - Options for the selection
  * @returns {Promise<Object>} - Selected ISO object
  */
-async function selectIso(isos) {
-  // Load local archive
+async function selectIso(isos, { purpose = 'download' } = {}) {
+  // Load local archive (only relevant for download)
   let localIsos = [];
-  const archivePath = path.join('ISO-Archive', 'isos.json');
-  if (fs.existsSync(archivePath)) {
-    try {
-      const archiveData = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
-      localIsos = Array.isArray(archiveData.isos) ? archiveData.isos : [];
-    } catch (e) {}
+  if (purpose === 'download') {
+    const archivePath = path.join('ISO-Archive', 'isos.json');
+    if (fs.existsSync(archivePath)) {
+      try {
+        const archiveData = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+        localIsos = Array.isArray(archiveData.isos) ? archiveData.isos : [];
+      } catch (e) {}
+    }
   }
 
-  console.log('\nAvailable ISOs to download:\n');
+  // Purpose-specific header
+  if (purpose === 'verify') {
+    console.log('\nAvailable ISOs to checksum verify:\n');
+  } else {
+    console.log('\nAvailable ISOs to download:\n');
+  }
   isos.forEach((iso, index) => {
-    // Check if ISO is in archive (by filename or hash)
-    const archived = localIsos.find(local => local.filename === path.basename(parseUrl(iso.link).filename));
-    const indicator = archived ? ' [IN ARCHIVE]' : '';
     if (typeof iso.size === 'number' && iso.size > 0) {
-      console.log(`${index + 1}. ${iso.name} (${formatSize(iso.size)})${indicator}`);
+      console.log(`${index + 1}. ${iso.name} (${formatSize(iso.size)})`);
     } else {
-      console.log(`${index + 1}. ${iso.name}${indicator}`);
+      console.log(`${index + 1}. ${iso.name}`);
     }
   });
-  
   const rl = createReadlineInterface();
   let selectedIndex;
   while (selectedIndex === undefined || selectedIndex < 1 || selectedIndex > isos.length) {
-    const answer = await askQuestion(`\nSelect an ISO to download (1-${isos.length}): `, rl);
+    const answer = await askQuestion(`\nSelect an ISO to ${purpose === 'verify' ? 'verify' : 'download'} (1-${isos.length}): `, rl);
     selectedIndex = parseInt(answer, 10);
     if (isNaN(selectedIndex) || selectedIndex < 1 || selectedIndex > isos.length) {
       console.log(`Please enter a number between 1 and ${isos.length}`);
