@@ -57,4 +57,4 @@ Config options are available in `iso-manager.conf`:
 
 MIT License
 
-Copyright (c) 2024 Dataløs / Mikkel Georgsen
+Copyright (c) 2025 Dataløs / Mikkel Georgsen

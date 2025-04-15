@@ -13,7 +13,7 @@ fi
 PORT=${1:-5001}
 
 # Use /tmp for logs with a unique directory name based on the application
-LOG_DIR="/tmp/anyboot-iso-manager"
+LOG_DIR="/tmp/iso-manager"
 
 # Ensure log directory exists with proper permissions
 mkdir -p "$LOG_DIR"

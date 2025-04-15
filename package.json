@@ -1,7 +1,7 @@
 {
   "name": "iso-manager",
   "version": "1.0.0",
-  "description": "A combined CLI and web interface for AnyBoot ISO Manager.",
+  "description": "A combined CLI and web interface for ISO Manager.",
   "main": "iso-manager.js",
   "scripts": {
     "start": "node iso-manager.js",
