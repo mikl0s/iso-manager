@@ -19,4 +19,4 @@ This is now part of the standalone [ISO Manager](https://github.com/mikl0s/iso-m
 
 MIT License
 
-Copyright (c) 2024 Dataløs / Mikkel Georgsen
+Copyright (c) 2025 Dataløs / Mikkel Georgsen

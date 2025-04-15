@@ -1,0 +1,45 @@
+# Node.js dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.*
+
+# Compiled output
+*.tsbuildinfo
+
+# Misc
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Archives
+*.tgz
+*.tar.gz
+
+# Coverage
+coverage/
+
+# Test output
+/test-results/
+
+# Local config
+iso-manager.conf.local
