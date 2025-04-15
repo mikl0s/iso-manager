@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnyBoot ISO Manager</title>
+    <!-- Tailwind CSS for rapid UI development -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Devicon for OS logos -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/devicon.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="public/css/styles.css">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e'
+                        },
+                        accent1: {
+                            400: '#a855f7', // purple
+                            500: '#9333ea'
+                        },
+                        accent2: {
+                            400: '#ec4899', // pink 
+                            500: '#db2777'
+                        },
+                        accent3: {
+                            400: '#22c55e', // green
+                            500: '#16a34a'
+                        },
+                        dark: {
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a'
+                        }
+                    },
+                    scale: {
+                        '102': '1.02'
+                    }
+                }
+            }
+        };
+    </script>
+</head>
+<body class="dark bg-dark-900 text-white font-sans">
+
+    <div class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-dark-800 border-b border-gray-700">
+            <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+                <div class="flex items-center space-x-2">
+                    <svg class="h-8 w-8 text-primary-500" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 3.75V20.25" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M8.25 7.5L12 3.75L15.75 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M19.5 16.5H4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M16.5 12.75L19.5 16.5L16.5 20.25" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <h1 class="text-2xl font-bold">AnyBoot ISO Manager</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="refreshBtn" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md transition-all duration-200 flex items-center">
+                        <i class="fas fa-sync-alt mr-2"></i> Refresh
+                    </button>
+                    <button id="settingsBtn" class="bg-dark-800 hover:bg-dark-700 text-white p-2 rounded-md border border-gray-700 transition-all duration-200">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <main class="flex-grow container mx-auto px-4 py-6">
+            <!-- Tabs -->
+            <div class="border-b border-gray-700 mb-6 flex">
+                <button class="tab-btn active px-4 py-2 font-medium border-b-2 border-primary-500 text-primary-400" data-tab-button="browse">Browse ISOs</button>
+                <button class="tab-btn px-4 py-2 font-medium border-b-2 border-transparent hover:text-gray-300" data-tab-button="download">Download</button>
+                <button class="tab-btn px-4 py-2 font-medium border-b-2 border-transparent hover:text-gray-300" data-tab-button="verify">Verify</button>
+                <button class="tab-btn px-4 py-2 font-medium border-b-2 border-transparent hover:text-gray-300" data-tab-button="settings">Settings</button>
+            </div>
+
+            <!-- Tab content -->
+            <div id="tabContent">
+                <!-- ISO Browse Tab (Default) -->
+                <div class="tab-content" data-tab-content="browse">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-semibold">Available ISO Images</h2>
+                        <div class="flex space-x-2">
+                            <div class="relative">
+                                <input type="text" id="searchInput" placeholder="Search by name or OS..." class="bg-dark-800 text-white px-4 py-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500 w-64">
+                                <i class="fas fa-search absolute right-3 top-3 text-gray-400"></i>
+                            </div>
+                            <select id="filterSelect" class="bg-dark-800 text-white px-4 py-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                <option value="all">All OS Types</option>
+                                <option value="ubuntu">Ubuntu</option>
+                                <option value="debian">Debian</option>
+                                <option value="mint">Linux Mint</option>
+                                <option value="fedora">Fedora</option>
+                                <option value="windows">Windows</option>
+                                <option value="freebsd">FreeBSD</option>
+                                <option value="arch">Arch</option>
+                                <option value="opensuse">openSUSE</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Loading indicator -->
+                    <div id="loadingIndicator" class="py-20 flex flex-col items-center justify-center">
+                        <div class="w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p class="text-gray-400">Loading ISO list...</p>
+                    </div>
+
+                    <!-- ISO Grid -->
+                    <div id="isoGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 hidden">
+                        <!-- ISO cards will be populated here via JavaScript -->
+                    </div>
+
+                    <!-- Empty state -->
+                    <div id="emptyState" class="py-20 flex flex-col items-center justify-center text-center hidden">
+                        <svg class="w-16 h-16 text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M12 21a9 9 0 110-18 9 9 0 010 18z"></path>
+                        </svg>
+                        <h3 class="text-xl font-medium text-gray-400 mb-1">No ISOs Found</h3>
+                        <p class="text-gray-500 max-w-md">Try changing your search terms or filters, or add new ISO images to your list.</p>
+                        <button class="mt-4 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md transition-all duration-200">
+                            <i class="fas fa-plus mr-2"></i> Add New ISO
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Download Tab -->
+                <div class="tab-content hidden" data-tab-content="download">
+                    <div class="bg-dark-800 rounded-lg border border-gray-700 p-6 mb-6">
+                        <h2 class="text-xl font-semibold mb-4">Download ISO</h2>
+                        <p class="text-gray-400 mb-4">Select an ISO from the list below to download, or enter a direct URL.</p>
+
+                        <div class="mb-4">
+                            <label class="block text-gray-300 mb-2">ISO Selection</label>
+                            <select id="isoSelectDownload" class="w-full bg-dark-900 text-white px-4 py-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                <option value="" disabled selected>Select an ISO to download</option>
+                                <!-- Options will be filled by JavaScript -->
+                            </select>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-gray-300 mb-2">Or Enter URL Directly</label>
+                            <input type="text" id="directUrlInput" placeholder="https://example.com/path/to/iso" class="w-full bg-dark-900 text-white px-4 py-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-gray-300 mb-2">Download Location</label>
+                            <div class="flex">
+                                <input type="text" id="downloadPathInput" value="./downloads" class="flex-grow bg-dark-900 text-white px-4 py-2 rounded-l-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                <button id="browseBtn" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-r-md transition-all duration-200">
+                                    Browse
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center mb-6">
+                            <input type="checkbox" id="verifyCheckbox" class="form-checkbox h-4 w-4 text-primary-500 rounded focus:ring-primary-500 border-gray-700 bg-dark-900">
+                            <label for="verifyCheckbox" class="ml-2 text-gray-300">Verify hash after download</label>
+                        </div>
+
+                        <button id="downloadBtn" class="bg-primary-600 hover:bg-primary-700 text-white py-3 px-6 rounded-md transition-all duration-200 flex items-center justify-center mx-auto">
+                            <i class="fas fa-download mr-2"></i> Start Download
+                        </button>
+                    </div>
+
+                    <!-- Download Progress -->
+                    <div id="downloadProgress" class="bg-dark-800 rounded-lg border border-gray-700 p-6 hidden">
+                        <div class="flex flex-col mb-2"><!-- Changed layout to vertical for better display -->
+                            <h3 class="font-medium text-lg break-all" id="downloadFilename">ubuntu-22.04-desktop-amd64.iso</h3>
+                            <div class="flex justify-between text-sm text-gray-400 mt-1">
+                                <span id="downloadSize">0 MB / 3.8 GB</span>
+                                <span id="downloadEta">--:--</span>
+                            </div>
+                        </div>
+                        <div class="w-full h-3 bg-dark-900 rounded-full mb-2 overflow-hidden">
+                            <div id="downloadProgressBar" class="h-full bg-gradient-to-r from-primary-500 to-accent1-400 rounded-full transition-all duration-200" style="width: 0%"></div>
+                        </div>
+                        <div class="flex justify-between text-sm text-gray-400">
+                            <span id="downloadSpeed">0 MB/s</span>
+                            <span><!-- Placeholder for balance --></span>
+                        </div>
+                        <div class="mt-4 flex justify-center space-x-4">
+                            <button id="pauseDownloadBtn" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-md transition-all duration-200 flex items-center justify-center">
+                                <i class="fas fa-pause mr-2"></i> Pause
+                            </button>
+                            <button id="cancelDownloadBtn" class="bg-red-700 hover:bg-red-600 text-white px-6 py-2 rounded-md transition-all duration-200 flex items-center justify-center">
+                                <i class="fas fa-times mr-2"></i> Cancel
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Download History -->
+                    <div class="bg-dark-800 rounded-lg border border-gray-700 p-6">
+                        <h3 class="text-lg font-semibold mb-4">Download History</h3>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full">
+                                <thead>
+                                    <tr class="text-left text-gray-400 border-b border-gray-700">
+                                        <th class="pb-3 font-medium">Filename</th>
+                                        <th class="pb-3 font-medium">Date</th>
+                                        <th class="pb-3 font-medium">Size</th>
+                                        <th class="pb-3 font-medium">Status</th>
+                                        <th class="pb-3 font-medium">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="downloadHistoryBody">
+                                    <!-- Will be populated by JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Verify Tab -->
+                <div class="tab-content hidden" data-tab-content="verify">
+                    <div class="bg-dark-800 rounded-lg border border-gray-700 p-6 mb-6">
+                        <h2 class="text-xl font-semibold mb-4">Verify ISO Integrity</h2>
+                        <p class="text-gray-400 mb-4">Verify the integrity of your downloaded ISO images by comparing their hashes.</p>
+
+                        <div class="mb-4">
+                            <label class="block text-gray-300 mb-2">Select ISO File</label>
+                            <div class="flex">
+                                <input type="text" id="verifyFilePathInput" placeholder="/path/to/your/iso" class="flex-grow bg-dark-900 text-white px-4 py-2 rounded-l-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                <button id="browseBtnVerify" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-r-md transition-all duration-200">
+                                    Browse
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-gray-300 mb-2">Expected Hash (Optional)</label>
+                            <textarea id="expectedHashInput" rows="2" placeholder="Paste the expected hash here..." class="w-full bg-dark-900 text-white px-4 py-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"></textarea>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-gray-300 mb-2">Hash Algorithm</label>
+                            <select id="hashAlgorithmSelect" class="w-full bg-dark-900 text-white px-4 py-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                <option value="sha256">SHA-256 (Recommended)</option>
+                                <option value="sha1">SHA-1</option>
+                                <option value="md5">MD5</option>
+                            </select>
+                        </div>
+
+                        <button id="verifyBtn" class="w-full bg-primary-600 hover:bg-primary-700 text-white py-3 rounded-md transition-all duration-200 flex items-center justify-center">
+                            <i class="fas fa-check-circle mr-2"></i> Verify ISO
+                        </button>
+                    </div>
+
+                    <!-- Verification Results -->
+                    <div id="verificationResults" class="bg-dark-800 rounded-lg border border-gray-700 p-6 hidden">
+                        <h3 class="text-lg font-semibold mb-4">Verification Results</h3>
+                        <div id="successResult" class="p-4 bg-green-900/20 border border-green-700 rounded-md mb-4 hidden">
+                            <div class="flex items-start">
+                                <i class="fas fa-check-circle text-green-500 text-xl mt-0.5 mr-3"></i>
+                                <div>
+                                    <h4 class="font-medium text-green-400">Verification Successful</h4>
+                                    <p class="text-gray-300 mt-1">The file hash matches the expected hash.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="failureResult" class="p-4 bg-red-900/20 border border-red-700 rounded-md mb-4 hidden">
+                            <div class="flex items-start">
+                                <i class="fas fa-times-circle text-red-500 text-xl mt-0.5 mr-3"></i>
+                                <div>
+                                    <h4 class="font-medium text-red-400">Verification Failed</h4>
+                                    <p class="text-gray-300 mt-1">The file hash does not match the expected hash.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-gray-300 mb-2">File Information</label>
+                            <div class="bg-dark-900 p-3 rounded-md border border-gray-700">
+                                <p><span class="text-gray-400">Filename:</span> <span id="verifiedFilename" class="text-white ml-2">ubuntu-22.04-desktop-amd64.iso</span></p>
+                                <p class="mt-1"><span class="text-gray-400">Size:</span> <span id="verifiedFilesize" class="text-white ml-2">3.8 GB (4,071,821,312 bytes)</span></p>
+                                <p class="mt-1"><span class="text-gray-400">Last Modified:</span> <span id="verifiedModified" class="text-white ml-2">April 8, 2023 16:42:30</span></p>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-gray-300 mb-2">Hash Values</label>
+                            <div class="bg-dark-900 p-3 rounded-md border border-gray-700">
+                                <p><span class="text-gray-400">Calculated SHA-256:</span></p>
+                                <p id="calculatedHash" class="mt-1 text-white break-all font-mono text-sm">e84d606b47d2c9318611c5ec752936acd5b5cb78249e8aec8f00a8338736c734</p>
+                                
+                                <div id="expectedHashDisplay" class="mt-3">
+                                    <p><span class="text-gray-400">Expected SHA-256:</span></p>
+                                    <p id="expectedHash" class="mt-1 text-white break-all font-mono text-sm">e84d606b47d2c9318611c5ec752936acd5b5cb78249e8aec8f00a8338736c734</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button id="newVerificationBtn" class="w-full bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-md transition-all duration-200">
+                            Verify Another ISO
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Settings Tab -->
+                <div class="tab-content hidden" data-tab-content="settings">
+                    <div class="bg-dark-800 rounded-lg border border-gray-700 p-6 mb-6">
+                        <h2 class="text-xl font-semibold mb-4">ISO Manager Settings</h2>
+
+                        <div class="mb-4">
+                            <label class="block text-gray-300 mb-2">ISO List Source URL</label>
+                            <input type="text" id="isoListUrlInput" value="https://raw.githubusercontent.com/mikl0s/iso-list/main/links.json" class="w-full bg-dark-900 text-white px-4 py-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-gray-300 mb-2">Default Download Directory</label>
+                            <div class="flex">
+                                <input type="text" id="defaultDownloadPathInput" value="./downloads" class="flex-grow bg-dark-900 text-white px-4 py-2 rounded-l-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                <button id="defaultBrowseBtn" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-r-md transition-all duration-200">
+                                    Browse
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-gray-300 mb-2">Default Hash Algorithm</label>
+                            <select id="defaultHashAlgorithmSelect" class="w-full bg-dark-900 text-white px-4 py-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                <option value="sha256">SHA-256 (Recommended)</option>
+                                <option value="sha1">SHA-1</option>
+                                <option value="md5">MD5</option>
+                            </select>
+                        </div>
+
+                        <div class="flex items-center mb-4">
+                            <input type="checkbox" id="autoVerifyCheckbox" class="form-checkbox h-4 w-4 text-primary-500 rounded focus:ring-primary-500 border-gray-700 bg-dark-900">
+                            <label for="autoVerifyCheckbox" class="ml-2 text-gray-300">Always verify downloads</label>
+                        </div>
+
+                        <div class="flex items-center mb-6">
+                            <input type="checkbox" id="useGitCheckbox" class="form-checkbox h-4 w-4 text-primary-500 rounded focus:ring-primary-500 border-gray-700 bg-dark-900">
+                            <label for="useGitCheckbox" class="ml-2 text-gray-300">Enable Git integration for saving ISO lists</label>
+                        </div>
+
+                        <div class="flex space-x-3">
+                            <button id="saveSettingsBtn" class="flex-1 bg-primary-600 hover:bg-primary-700 text-white py-2 rounded-md transition-all duration-200">
+                                Save Settings
+                            </button>
+                            <button id="resetSettingsBtn" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-md transition-all duration-200">
+                                Reset to Defaults
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-dark-800 rounded-lg border border-gray-700 p-6">
+                        <h3 class="text-lg font-semibold mb-4">About</h3>
+                        <p class="text-gray-400 mb-3">AnyBoot ISO Manager Web Interface</p>
+                        <p class="text-gray-400 mb-3">This web interface provides a graphical frontend to the iso-manager.js script, allowing you to manage, download, and verify ISO images for various operating systems.</p>
+                        <p class="text-gray-400">Version 1.0.0</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-dark-800 border-t border-gray-700 py-4">
+            <div class="container mx-auto px-4 flex flex-col md:flex-row justify-between items-center">
+                <div class="text-gray-400 text-sm mb-2 md:mb-0">
+                    &copy; 2025 AnyBoot Project. All rights reserved.
+                </div>
+                <div class="flex space-x-4">
+                    <a href="#" class="text-gray-400 hover:text-primary-400 transition-colors duration-200">
+                        <i class="fab fa-github"></i>
+                    </a>
+                    <a href="#" class="text-gray-400 hover:text-primary-400 transition-colors duration-200">
+                        <i class="fas fa-book"></i> Documentation
+                    </a>
+                    <a href="#" class="text-gray-400 hover:text-primary-400 transition-colors duration-200">
+                        <i class="fas fa-question-circle"></i> Help
+                    </a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Toast notifications container -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+    <!-- Modal backdrop -->
+    <div id="modalBackdrop" class="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center hidden">
+        <!-- Modals will be created dynamically with JavaScript -->
+    </div>
+
+    <!-- Custom JS -->
+    <script src="public/js/main.js" type="module"></script>
+</body>
+</html>

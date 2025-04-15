@@ -1,0 +1,33 @@
+{
+  "name": "iso-manager",
+  "version": "1.0.0",
+  "description": "A combined CLI and web interface for AnyBoot ISO Manager.",
+  "main": "iso-manager.js",
+  "scripts": {
+    "start": "node iso-manager.js",
+    "start:web": "node iso-manager-web/server.js",
+    "start:all": "concurrently \"npm run start\" \"npm run start:web\"",
+    "dev:web": "nodemon iso-manager-web/server.js",
+    "dev:all": "concurrently \"npm run start\" \"npm run dev:web\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Mikl0s",
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "axios": "^1.8.4",
+    "cli-progress": "^3.12.0",
+    "jsdom": "^26.0.0",
+    "express": "^4.18.2",
+    "immer": "^10.1.1",
+    "react-lineto": "^3.3.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "concurrently": "^8.2.2"
+  }
+}

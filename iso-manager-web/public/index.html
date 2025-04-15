@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnyBoot ISO Manager</title>
+    <!-- Tailwind CSS for rapid UI development -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Devicon for OS logos -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/devicon.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/css/styles.css">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e'
+                        },
+                        accent1: {
+                            400: '#a855f7', // purple
+                            500: '#9333ea'
+                        },
+                        accent2: {
+                            400: '#ec4899', // pink 
+                            500: '#db2777'
+                        },
+                        accent3: {
+                            400: '#22c55e', // green
+                            500: '#16a34a'
+                        },
+                        dark: {
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a'
+                        }
+                    },
+                    scale: {
+                        '102': '1.02'
+                    }
+                }
+            }
+        };
+    </script>
+</head>
+<body class="dark bg-dark-900 text-white font-sans">
+
+    <div class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-dark-800 border-b border-gray-700">
+            <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+                <div class="flex items-center space-x-2">
+                    <svg class="h-8 w-8 text-primary-500" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 3.75V20.25" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M8.25 7.5L12 3.75L15.75 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M19.5 16.5H4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M16.5 12.75L19.5 16.5L16.5 20.25" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <h1 class="text-2xl font-bold">AnyBoot ISO Manager</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="refreshBtn" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md transition-all duration-200 flex items-center">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button id="settingsBtn" class="bg-dark-800 hover:bg-dark-700 text-white p-2 rounded-md border border-gray-700 transition-all duration-200">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <main class="flex-grow container mx-auto px-4 py-6">
+            <!-- Tab content -->
+            <div id="tabContent">
+                <!-- ISO Browse Content (Default) -->
+                <div class="tab-content" data-tab-content="browse">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-semibold">Available ISO Images</h2>
+                        <div class="flex space-x-2">
+                            <div class="relative">
+                                <input type="text" id="searchInput" placeholder="Search by name or OS..." class="bg-dark-800 text-white px-4 py-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500 w-64">
+                                <i class="fas fa-search absolute right-3 top-3 text-gray-400"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Loading indicator -->
+                    <div id="loadingIndicator" class="py-20 flex flex-col items-center justify-center">
+                        <div class="w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p class="text-gray-400">Loading ISO list...</p>
+                    </div>
+
+                    <!-- ISO Grid -->
+                    <div id="isoGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 hidden">
+                        <!-- ISO cards will be populated here via JavaScript -->
+                    </div>
+
+                    <!-- Empty state -->
+                    <div id="emptyState" class="py-20 flex flex-col items-center justify-center text-center hidden">
+                        <svg class="w-16 h-16 text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M12 21a9 9 0 110-18 9 9 0 010 18z"></path>
+                        </svg>
+                        <h3 class="text-xl font-medium text-gray-400 mb-1">No ISOs Found</h3>
+                        <p class="text-gray-500 max-w-md">Try changing your search terms or filters, or add new ISO images to your list.</p>
+                        <button class="mt-4 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md transition-all duration-200">
+                            <i class="fas fa-plus mr-2"></i> Add New ISO
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-dark-800 border-t border-gray-700 py-4">
+            <div class="container mx-auto px-4 flex flex-col md:flex-row justify-between items-center">
+                <div class="text-gray-400 text-sm mb-2 md:mb-0">
+                    &copy; 2025 AnyBoot Project. All rights reserved.
+                </div>
+                <div class="flex space-x-4">
+                    <a href="#" class="text-gray-400 hover:text-primary-400 transition-colors duration-200">
+                        <i class="fab fa-github"></i>
+                    </a>
+                    <a href="#" class="text-gray-400 hover:text-primary-400 transition-colors duration-200">
+                        <i class="fas fa-book"></i> Documentation
+                    </a>
+                    <a href="#" class="text-gray-400 hover:text-primary-400 transition-colors duration-200">
+                        <i class="fas fa-question-circle"></i> Help
+                    </a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Toast notifications container -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+    <!-- Modal backdrop -->
+    <div id="modalBackdrop" class="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center hidden">
+        <!-- Modals will be created dynamically with JavaScript -->
+    </div>
+
+    <!-- Application Scripts -->
+    <script type="module" src="/js/ui.js"></script>
+    <script type="module" src="/js/main.js"></script>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 hidden z-50">
+    <div class="bg-dark-800 rounded-lg border border-gray-700 p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-semibold">ISO Manager Settings</h2>
+            <button id="closeSettingsModalBtn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+        </div>
+
+        <div class="space-y-4">
+            <div>
+                <label for="settingsIsoListUrlInput" class="block text-gray-300 mb-1 text-sm font-medium">ISO List Source URL</label>
+                <input type="text" id="settingsIsoListUrlInput" placeholder="https://example.com/links.json" class="w-full bg-dark-900 text-white px-3 py-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+            </div>
+
+            <div>
+                <label for="settingsDefaultDownloadPathInput" class="block text-gray-300 mb-1 text-sm font-medium">Default Download Directory</label>
+                <div class="flex">
+                    <input type="text" id="settingsDefaultDownloadPathInput" placeholder="Enter path on server" class="w-full bg-dark-900 text-white px-3 py-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                </div>
+            </div>
+
+             <div class="flex items-center">
+                 <input type="checkbox" id="settingsAutoVerifyCheckbox" class="form-checkbox h-4 w-4 text-primary-500 rounded focus:ring-primary-500 border-gray-700 bg-dark-900 opacity-50 cursor-not-allowed" disabled> <!-- Disabled for now -->
+                 <label for="settingsAutoVerifyCheckbox" class="ml-2 text-gray-300 text-sm">Always verify downloads</label>
+             </div>
+        </div>
+
+        <div class="mt-6 pt-4 border-t border-gray-700 flex justify-end space-x-3">
+            <button id="cancelSettingsBtn" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md transition-all duration-200">
+                Cancel
+            </button>
+            <button id="saveSettingsBtn" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md transition-all duration-200">
+                Save Settings
+            </button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

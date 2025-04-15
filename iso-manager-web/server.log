@@ -1,0 +1,30 @@
+
+ISO Manager - A tool for fetching and managing Linux distribution ISOs
+
+Usage:
+  node iso-manager.js [mode] [options]
+
+Modes:
+  list            Fetch ISOs from a predefined JSON list
+  verify          Verify and update ISO hashes
+  download        Download an ISO file
+
+Options:
+  --url, -u       Target URL to fetch data from
+  --limit, -l     Limit the number of results
+  --json, -j      Output in JSON format
+  --save, -s      Save the results to a file
+  --git, -g       Auto-commit and push changes to GitHub
+  --verify, -v    Verify ISO hashes
+  --hash-match    Pattern for finding hash file (default: '{filename}.{hashAlgorithm}')
+                  Use {filename} and {hashAlgorithm} as placeholders
+  --download, -d  Download an ISO file
+  --test, -t      Test mode - delete file after verification
+  --download-dir  Directory to save downloaded files (default: ./downloads)
+  --help, -h      Show this help message
+
+Examples:
+  node iso-manager.js list --url https://example.com/isos.json --save list.json
+  node iso-manager.js verify -g
+  node iso-manager.js download --test
+
