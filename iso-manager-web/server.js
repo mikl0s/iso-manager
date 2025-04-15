@@ -77,7 +77,7 @@ let isoListCacheTime = null;
 const ISO_CACHE_DURATION = 3600000; // 1 hour in milliseconds
 
 // Set up logging
-const logPath = path.join(process.env.TEMP || '/tmp', 'iso-manager', 'server.log');
+const logPath = path.join(__dirname, '..', 'logs', 'server.log');
 const logDir = path.dirname(logPath);
 
 // Create logger object

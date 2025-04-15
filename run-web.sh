@@ -12,8 +12,8 @@ fi
 # Set the port (default: 5001)
 PORT=${1:-5001}
 
-# Use /tmp for logs with a unique directory name based on the application
-LOG_DIR="/tmp/iso-manager"
+# Use logs directory in the project root
+LOG_DIR="$(dirname "$0")/logs"
 
 # Ensure log directory exists with proper permissions
 mkdir -p "$LOG_DIR"
