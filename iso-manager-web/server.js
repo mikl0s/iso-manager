@@ -835,8 +835,8 @@ app.delete('/api/iso-archive/:filename', (req, res) => {
       throw new Error('ISO Archive path is not configured.');
     }
 
-    const fullPathToDelete = path.resolve(archivePath, filenameToDelete);
     const resolvedArchivePath = resolveArchivePath(archivePath);
+    const fullPathToDelete = path.join(resolvedArchivePath, path.basename(filenameToDelete));
 
     // **Security Check:** Ensure the path to delete is within the archive directory
     if (!fullPathToDelete.startsWith(resolvedArchivePath + path.sep)) {

@@ -43,3 +43,8 @@ coverage/
 
 # Local config
 iso-manager.conf.local
+
+# ISO-Archive
+ISO-Archive/
+ISO-Archive/isos.json
+

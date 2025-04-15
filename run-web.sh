@@ -12,14 +12,17 @@ fi
 # Set the port (default: 5001)
 PORT=${1:-5001}
 
-# Use logs directory in the project root
-LOG_DIR="$(dirname "$0")/logs"
+# Use logs directory in the project root (absolute path)
+LOG_DIR="$(cd "$(dirname "$0")"; pwd)/logs"
 
 # Ensure log directory exists with proper permissions
 mkdir -p "$LOG_DIR"
 chmod 755 "$LOG_DIR"
 
-# Create a PID file location
+touch "$LOG_DIR/web-server.log"
+touch "$LOG_DIR/web-server.pid"
+
+# Create a PID file location (absolute path)
 PID_FILE="$LOG_DIR/web-server.pid"
 
 # Function to kill any process using our port
