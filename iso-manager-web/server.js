@@ -157,7 +157,15 @@ async function checkAndUpdateIsoList(url) {
           // Cache the data
           isoListCache = parsedData;
           isoListCacheTime = Date.now();
-          
+
+          // Always save a copy of links.json in the project root
+          try {
+            const rootLinksPath = path.join(__dirname, '..', 'links.json');
+            fs.writeFileSync(rootLinksPath, JSON.stringify(parsedData, null, 2), 'utf8');
+          } catch (err) {
+            logger.error('Failed to write links.json to root:', err);
+          }
+
           // Return the data
           resolve(parsedData);
         } catch (error) {
@@ -651,12 +659,28 @@ app.post('/api/download', async (req, res) => {
               
               // Extract version if present in filename
               const version = extractVersionFromFilename(filename);
-              
+
+              // Look up the ISO metadata from the loaded/cached ISO list (links.json)
+              let isoMeta = null;
+              if (isoListCache) {
+                // Try to find by URL match or by name
+                for (const [key, entry] of Object.entries(isoListCache)) {
+                  if (entry.url === url || key === isoName || key.replace(/\.(iso|img)$/i, '') === isoName) {
+                    isoMeta = entry;
+                    break;
+                  }
+                }
+              }
+
+              // Copy hash and hash type directly from links.json if present
+              const hash = isoMeta && (isoMeta.hash || isoMeta.hash_value) ? (isoMeta.hash || isoMeta.hash_value) : (result.hash || '');
+              const hashAlgorithm = isoMeta && (isoMeta.hashAlgorithm || isoMeta.hash_type) ? (isoMeta.hashAlgorithm || isoMeta.hash_type) : (result.hashAlgorithm || 'sha256');
+
               // Add to isos.json with hash and size
               addIsoToJson(
-                { name: isoName, version: version },
+                { name: isoName, version: version, hash: hash, hashAlgorithm: hashAlgorithm },
                 filename,
-                result.hash,
+                hash,
                 fileStats.size
               );
               
