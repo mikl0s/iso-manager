@@ -104,34 +104,36 @@ function parseCommandLineArgs() {
     console.log(`
 ISO Manager - A tool for fetching and managing Linux distribution ISOs
 
+Features:
+  - download #    Download a specific ISO from the list by its number (e.g. 'node iso-manager.js download 2')
+  - Interactive mode for download and verify
+  - Progress bar for downloads and hash verification (large files)
+  - Checksums and hash type are verified against both local and online sources
+
 Usage:
   node iso-manager.js [mode] [options]
 
 Modes:
   list            Fetch ISOs from a predefined JSON list
   verify          Verify and update ISO hashes
-  download        Download an ISO file
+  download        Download an ISO file (interactive or by number)
   archive-list    List ISOs in the local archive
   archive-delete  Delete an ISO from the archive
   archive-verify  Verify the hash of a local file against isos.json
+  delete          Delete an ISO from the archive (interactive)
 
 Options:
-  --url, -u       Target URL to fetch data from
-  --limit, -l     Limit the number of results
-  --json, -j      Output in JSON format
-  --save, -s      Save the results to a file
-  --verify, -v    Verify ISO hashes
-  --hash-match    Pattern for finding hash file (default: '{filename}.{hashAlgorithm}')
-                  Use {filename} and {hashAlgorithm} as placeholders
-  --download, -d  Download an ISO file
-  --test, -t      Test mode - delete file after verification
-  --download-dir  Directory to save downloaded files (default: ./downloads)
+  --save, -s      Save the output of list to a file
+  --verify, -v    Force hash verification after download
+  --test, -t      Download, verify, and delete the downloaded and verified file
+  --download-dir  Directory to save downloaded files (default: ISO-Archive)
   --help, -h      Show this help message
 
 Examples:
-  node iso-manager.js list --url https://example.com/isos.json --save list.json
+  node iso-manager.js list --save list.json
   node iso-manager.js verify
   node iso-manager.js download --test
+  node iso-manager.js download 2   # Download the 2nd ISO in the list
   node iso-manager.js archive-list
   node iso-manager.js archive-delete <filename>
   node iso-manager.js archive-verify <filename>
@@ -155,18 +157,6 @@ Examples:
     const arg = args[i];
     
     switch (arg) {
-      case '--url':
-      case '-u':
-        options.targetUrl = args[++i];
-        break;
-      case '--limit':
-      case '-l':
-        options.limit = parseInt(args[++i], 10);
-        break;
-      case '--json':
-      case '-j':
-        options.outputJson = true;
-        break;
       case '--save':
       case '-s':
         options.savePath = args[++i];
@@ -174,13 +164,6 @@ Examples:
       case '--verify':
       case '-v':
         options.verifyHash = true;
-        break;
-      case '--hash-match':
-        options.hashMatch = args[++i];
-        break;
-      case '--download':
-      case '-d':
-        options.download = true;
         break;
       case '--test':
       case '-t':
@@ -191,7 +174,7 @@ Examples:
         break;
       case '--filename':
         options.filename = args[++i];
-        break;
+        break
     }
   }
   
@@ -972,7 +955,7 @@ async function downloadIso(isos, options) {
     const archiveIso = localIsos.find(local => local.filename === filename);
     const linksHash = selectedIso.hash || selectedIso.hash_value;
     const linksHashAlgo = selectedIso.hashAlgorithm || selectedIso.hash_type || 'sha256';
-    if (archiveIso && archiveIso.hash && linksHash && archiveIso.hashAlgorithm && linksHashAlgo && archiveIso.hashAlgorithm.toLowerCase() === linksHashAlgo.toLowerCase()) {
+    if (archiveIso && archiveIso.hash && linksHash && linksHashAlgo && linksHashAlgo.toLowerCase() === linksHashAlgo.toLowerCase()) {
       if (archiveIso.hash.toLowerCase() === linksHash.toLowerCase()) {
         console.log(`\nThis ISO is already in your archive and hash verified (version: ${selectedIso.version || ''}). No download needed.`);
         // Patch: update version in archive if missing or outdated
@@ -1229,6 +1212,44 @@ async function main() {
         break;
       }
       
+      case 'delete': {
+        // Interactive delete for local ISOs (menu just like verify)
+        const config = getConfig();
+        const archivePath = path.resolve(config.isoArchive || 'ISO-Archive');
+        const isosJsonPath = path.join(archivePath, 'isos.json');
+        if (!fs.existsSync(isosJsonPath)) {
+          console.error('No isos.json found in archive.');
+          process.exit(1);
+        }
+        const meta = JSON.parse(fs.readFileSync(isosJsonPath, 'utf8'));
+        const isos = Array.isArray(meta.isos) ? meta.isos : [];
+        if (isos.length === 0) {
+          console.error('No ISOs found in archive.');
+          process.exit(1);
+        }
+        // Interactive selection
+        const selected = await selectIso(isos.map(i => ({
+          ...i,
+          link: i.url || '', // for selectIso compatibility
+          size: i.size
+        })), { purpose: 'delete' });
+        const filePath = path.join(archivePath, selected.filename);
+        if (!fs.existsSync(filePath)) {
+          console.error('File not found:', filePath);
+          process.exit(1);
+        }
+        // Confirm deletion
+        const rl = createReadlineInterface();
+        const confirm = await askQuestion(`Are you sure you want to delete '${selected.filename}'? (y/N): `, rl);
+        rl.close();
+        if (confirm.trim().toLowerCase() === 'y') {
+          await deleteArchiveIso(selected.filename);
+        } else {
+          console.log('Aborted deletion.');
+        }
+        break;
+      }
+      
       case 'download': {
         let isos = [];
         
@@ -1279,13 +1300,34 @@ async function main() {
         break;
       
       case 'archive-delete':
+        // Interactive delete for local ISOs
         if (!args[0] && process.argv.length > 3) {
           // Support: node iso-manager.js archive-delete <filename>
           await deleteArchiveIso(process.argv[3]);
         } else if (args.filename) {
           await deleteArchiveIso(args.filename);
         } else {
-          console.error('Usage: node iso-manager.js archive-delete <filename>');
+          // Interactive selection
+          const config = getConfig();
+          const archivePath = path.resolve(config.isoArchive || 'ISO-Archive');
+          const isosJsonPath = path.join(archivePath, 'isos.json');
+          if (!fs.existsSync(isosJsonPath)) {
+            console.error('No isos.json found in archive.');
+            process.exit(1);
+          }
+          const meta = JSON.parse(fs.readFileSync(isosJsonPath, 'utf8'));
+          const isos = Array.isArray(meta.isos) ? meta.isos : [];
+          if (isos.length === 0) {
+            console.error('No ISOs found in archive.');
+            process.exit(1);
+          }
+          // Interactive selection for delete
+          const selected = await selectIso(isos.map(i => ({
+            ...i,
+            link: i.url || '', // for selectIso compatibility
+            size: i.size
+          })), { purpose: 'delete' });
+          await deleteArchiveIso(selected.filename);
         }
         break;
       
@@ -1423,7 +1465,7 @@ class IsoManager {
   constructor() {
     this.watcher = null;
     this.events = new (require('events').EventEmitter)();
-    setupArchiveWatcher();
+    this.setupArchiveWatcher();
   }
 
   setupArchiveWatcher() {
@@ -1431,25 +1473,17 @@ class IsoManager {
     const archivePath = path.resolve(config.isoArchive || 'ISO-Archive');
     
     try {
-      // Only log watcher setup errors
+      // Check if directory exists, create if it doesn't
       if (!fs.existsSync(archivePath)) {
-        try {
-          fs.mkdirSync(archivePath, { recursive: true });
-        } catch (err) {
-          logToFile(`Archive directory creation error: ${err.message}`);
-        }
+        fs.mkdirSync(archivePath, { recursive: true });
       }
-      const watcher = fs.watch(archivePath, (eventType, filename) => {
-        // Only log if something looks truly exceptional
-        if (!filename) {
-          logToFile(`Archive watcher event with missing filename: ${eventType}`);
-        }
-        // Optionally: log only unexpected event types
-        if (eventType !== 'rename' && eventType !== 'change') {
-          logToFile(`Archive watcher unexpected event: ${eventType} - ${filename}`);
+      // Initialize watcher
+      this.watcher = fs.watch(archivePath, (eventType, filename) => {
+        if (eventType === 'rename' || eventType === 'change') {
+          this.events.emit('archive-updated');
         }
       });
-      watcher.on('error', (err) => {
+      this.watcher.on('error', (err) => {
         logToFile('Archive watcher error:', err);
       });
     } catch (error) {
@@ -1504,7 +1538,7 @@ class IsoManager {
     
     const finalUrl = await this.followRedirects(url);
     logToFile(`Final URL after redirects: ${finalUrl}`);
-    const httpModule = finalUrl.startsWith('https:') ? https : http;
+    const httpModule = finalUrl.startsWith('https') ? https : http;
     
     // Ensure outputPath exists and is valid
     const finalOutputPath = params.outputPath || DEFAULT_CONFIG.downloadDir;
@@ -1593,6 +1627,16 @@ class IsoManager {
             downloaded: formatSize(bytesTransferred),
             total: totalBytes ? formatSize(totalBytes) : 'Unknown'
           });
+          if (typeof onProgress === 'function') {
+            onProgress({
+              percentage: totalBytes ? (bytesTransferred / totalBytes) * 100 : 0,
+              downloaded: bytesTransferred,
+              total: totalBytes,
+              speed: avgSpeed || 0,
+              eta: eta || 0,
+              filename
+            });
+          }
         });
         response.pipe(fileStream);
 
@@ -1601,7 +1645,7 @@ class IsoManager {
       });
       
       req.on('error', (err) => {
-        fileStream.destroy();
+        bar.stop();
         reject(err);
       });
       
@@ -1618,8 +1662,14 @@ class IsoManager {
     });
   }
   
-  async downloadIso(params) {
-    const { url, outputPath, verify = false, hashAlgorithm = 'sha256', onProgress, signal } = params;
+  async downloadIso({
+    url,
+    outputPath,
+    verify = false,
+    hashAlgorithm = 'sha256',
+    onProgress,
+    signal
+  }) {
     const { filename } = parseUrl(url);
     const downloadPath = path.join(outputPath || DEFAULT_CONFIG.downloadDir, filename);
     const httpModule = url.startsWith('https') ? https : http;
@@ -1674,6 +1724,16 @@ class IsoManager {
           const avgSpeed = speedHistory.length ? speedHistory.reduce((a,b)=>a+b,0)/speedHistory.length : 0;
           const eta = (totalBytes && avgSpeed > 0) ? formatTime((totalBytes - bytesTransferred) / avgSpeed) : 'Unknown';
           bar.update(bytesTransferred, { speed: avgSpeed.toFixed(2) });
+          if (typeof onProgress === 'function') {
+            onProgress({
+              percentage: totalBytes ? (bytesTransferred / totalBytes) * 100 : 0,
+              downloaded: bytesTransferred,
+              total: totalBytes,
+              speed: avgSpeed || 0,
+              eta: eta || 0,
+              filename
+            });
+          }
         });
         response.pipe(fileStream);
         fileStream.on('finish', () => {
@@ -1986,6 +2046,16 @@ IsoManager.prototype.downloadAndVerifyFile = async function(params) {
         const avgSpeed = speedHistory.length ? speedHistory.reduce((a,b)=>a+b,0)/speedHistory.length : 0;
         const eta = (totalBytes && avgSpeed > 0) ? formatTime((totalBytes - bytesTransferred) / avgSpeed) : 'Unknown';
         bar.update(bytesTransferred, { speed: avgSpeed.toFixed(2) });
+        if (typeof onProgress === 'function') {
+          onProgress({
+            percentage: totalBytes ? (bytesTransferred / totalBytes) * 100 : 0,
+            downloaded: bytesTransferred,
+            total: totalBytes,
+            speed: avgSpeed || 0,
+            eta: eta || 0,
+            filename
+          });
+        }
       });
       response.pipe(fileStream);
       fileStream.on('finish', () => {
@@ -2057,6 +2127,8 @@ async function selectIso(isos, { purpose = 'download' } = {}) {
   // Purpose-specific header
   if (purpose === 'verify') {
     console.log('\nAvailable ISOs to checksum verify:\n');
+  } else if (purpose === 'delete') {
+    console.log('\nAvailable ISOs to delete:\n');
   } else {
     console.log('\nAvailable ISOs to download:\n');
   }
@@ -2070,7 +2142,7 @@ async function selectIso(isos, { purpose = 'download' } = {}) {
   const rl = createReadlineInterface();
   let selectedIndex;
   while (selectedIndex === undefined || selectedIndex < 1 || selectedIndex > isos.length) {
-    const answer = await askQuestion(`\nSelect an ISO to ${purpose === 'verify' ? 'verify' : 'download'} (1-${isos.length}): `, rl);
+    const answer = await askQuestion(`\nSelect an ISO to ${purpose === 'verify' ? 'verify' : purpose === 'delete' ? 'delete' : 'download'} (1-${isos.length}): `, rl);
     selectedIndex = parseInt(answer, 10);
     if (isNaN(selectedIndex) || selectedIndex < 1 || selectedIndex > isos.length) {
       console.log(`Please enter a number between 1 and ${isos.length}`);
